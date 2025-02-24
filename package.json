@@ -1,7 +1,7 @@
 {
-	"name": "obsidian-sample-plugin",
+	"name": "davisellwood-blog-publisher",
 	"version": "1.0.0",
-	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
+	"description": "This is a plugin for Obsidian for me to publish blog posts to my personal website",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",

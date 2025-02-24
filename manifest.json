@@ -1,11 +1,10 @@
 {
-	"id": "sample-plugin",
-	"name": "Sample Plugin",
+	"id": "davisellwood-blog-publisher",
+	"name": "Davis Ellwood Blog Publisher",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
-	"isDesktopOnly": false
+	"description": "A simple (poorly made) plugin for me to publish blog posts to my website",
+	"author": "Davis ELlwood",
+	"authorUrl": "https://davisellwood.com",
+	"isDesktopOnly": true
 }

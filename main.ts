@@ -1,134 +1,183 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Editor, MarkdownView, Notice, Plugin, PluginSettingTab, request, Setting, TAbstractFile, TFile } from 'obsidian';
 
 // Remember to rename these classes and interfaces!
 
 interface MyPluginSettings {
-	mySetting: string;
+    apiKey: string;
+    postPath: string;
 }
 
 const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default'
+    apiKey: '',
+    postPath: ''
 }
 
 export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+    settings: MyPluginSettings;
 
-	async onload() {
-		await this.loadSettings();
+    async onload() {
+        await this.loadSettings();
 
-		// This creates an icon in the left ribbon.
-		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
-		});
-		// Perform additional things with the ribbon
-		ribbonIconEl.addClass('my-plugin-ribbon-class');
+        // This adds an editor command that can perform some operation on the current editor instance
+        this.addCommand({
+            id: 'sample-editor-command',
+            name: 'Sample editor command',
+            editorCallback: (editor: Editor, view: MarkdownView) => {
+                console.log(editor.getSelection());
+                editor.replaceSelection('Sample Editor Command');
+            }
+        });
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status Bar Text');
+        // This adds a settings tab so the user can configure various aspects of the plugin
+        this.addSettingTab(new SampleSettingTab(this.app, this));
 
-		// This adds a simple command that can be triggered anywhere
-		this.addCommand({
-			id: 'open-sample-modal-simple',
-			name: 'Open sample modal (simple)',
-			callback: () => {
-				new SampleModal(this.app).open();
-			}
-		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'sample-editor-command',
-			name: 'Sample editor command',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				console.log(editor.getSelection());
-				editor.replaceSelection('Sample Editor Command');
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-sample-modal-complex',
-			name: 'Open sample modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
+        this.registerEvent(
+            this.app.workspace.on('file-menu', (menu, file) => {
+              menu.addItem((item) => {
+                item
+                  .setTitle('Upload as Blog Post')
+                  .setIcon('cloud-upload')
+                  .onClick(async () => {
+                    this.startUploadBlogPost(file);
+                  });
+              });
+            })
+          );
+    }
 
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
-				}
-			}
-		});
+    async startUploadBlogPost(abstractFile: TAbstractFile) {
+        const file = this.app.vault.getFileByPath(abstractFile.path);
+        if (file == null) {
+            new Notice("Error: cannot upload a folder to blog");
+            return;
+        }
 
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
+        
+        this.getMetaDataForUpload(file);
+    }
 
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
-		});
+    async getMetaDataForUpload(file: TFile) {
+        const data = await this.app.vault.read(file);
+        const propStartIdx = data.indexOf('---\n')
+        const propEndIdx = data.indexOf('---\n', 3);
 
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
-	}
+        const metadata = this.app.metadataCache.getFileCache(file);
 
-	onunload() {
+        if (propStartIdx == 0 && propEndIdx != -1 && metadata !== null && metadata.frontmatter) {
+            const title = metadata.frontmatter['blog_title'];
+            const id = metadata.frontmatter['blog_id'];
+            const publicPost = metadata.frontmatter['public'];
 
-	}
+            const attachedFiles = metadata.embeds?.map(embed => {
+                const embedFile = this.app.vault.getFileByPath(embed.link);
+                if (embedFile != null) {
+                    return {
+                        fileData: this.app.vault.readBinary(embedFile),
+                        fileName: embed.link
+                    }
+                }
+            });
 
-	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-	}
+            let validationPassing = true;
+            if (title == undefined) {
+                validationPassing = false;
+                new Notice("Must set the blog_title property for post")
+            }
+            if (id == undefined) {
+                validationPassing = false;
+                new Notice("Must set the blog_id property for post")
+            }
+            if (publicPost == undefined) {
+                validationPassing = false;
+                new Notice("Must set the public property for post")
+            }
 
-	async saveSettings() {
-		await this.saveData(this.settings);
-	}
-}
+            if (validationPassing) {
+                attachedFiles?.forEach(async file => {
+                    if (!file) return;
+                    const fileBytes = await file.fileData;
+                    
+                    request({
+                        url: this.settings.postPath  + "attachFile",
+                        body: fileBytes,
+                        headers: {
+                            "blog_title": title,
+                            "blog_id": id,
+                            "api_key": this.settings.apiKey,
+                            "image_name": file.fileName
+                        },
+                        method: "POST",
+                    }).then(r => {
+                        new Notice(r);
+                    }).catch(e => {
+                        new Notice(e);
+                    });
+                });
 
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
+                request({
+                    url: this.settings.postPath + "upload",
+                    body: data.substring(propEndIdx + 4),
+                    headers: {
+                        "blog_title": title,
+                        "blog_id": id,
+                        "is_public": JSON.stringify(publicPost == "true"),
+                        "api_key": this.settings.apiKey
+                    },
+                    method: "POST",
+                }).then(r => {
+                    new Notice(r);
+                }).catch(e => {
+                    new Notice(e);
+                });
+            }
+        } else {
+            new Notice ("Failed upload: Properties or cache data was unreadable")
+        }
+    }
 
-	onOpen() {
-		const {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
+    onunload() {
 
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
-	}
+    }
+
+    async loadSettings() {
+        this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    }
+
+    async saveSettings() {
+        await this.saveData(this.settings);
+    }
 }
 
 class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
+    plugin: MyPlugin;
 
-	constructor(app: App, plugin: MyPlugin) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
+    constructor(app: App, plugin: MyPlugin) {
+        super(app, plugin);
+        this.plugin = plugin;
+    }
 
-	display(): void {
-		const {containerEl} = this;
+    display(): void {
+        const {containerEl} = this;
 
-		containerEl.empty();
+        containerEl.empty();
 
-		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
-			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
-				.onChange(async (value) => {
-					this.plugin.settings.mySetting = value;
-					await this.plugin.saveSettings();
-				}));
-	}
+        new Setting(containerEl)
+            .setName('API Key')
+            .setDesc('The API key for publishing blog posts')
+            .addText(text => text
+                .setValue(this.plugin.settings.apiKey)
+                .onChange(async (value) => {
+                    this.plugin.settings.apiKey = value;
+                    await this.plugin.saveSettings();
+                }));
+        new Setting(containerEl)
+            .setName('API Path')
+            .setDesc('The Path for posting blogs')
+            .addText(text => text
+                .setValue(this.plugin.settings.postPath)
+                .onChange(async (value) => {
+                    this.plugin.settings.postPath = value;
+                    await this.plugin.saveSettings();
+                }));
+    }
 }
