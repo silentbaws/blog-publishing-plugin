@@ -67,6 +67,7 @@ export default class MyPlugin extends Plugin {
             const title = metadata.frontmatter['blog_title'];
             const id = metadata.frontmatter['blog_id'];
             const publicPost = metadata.frontmatter['public'];
+            const description = metadata.frontmatter['description'];
 
             const attachedFiles = metadata.embeds?.map(embed => {
                 const embedFile = this.app.vault.getFileByPath(embed.link);
@@ -90,6 +91,10 @@ export default class MyPlugin extends Plugin {
             if (publicPost == undefined) {
                 validationPassing = false;
                 new Notice("Must set the public property for post")
+            }
+            if (description == undefined) {
+                validationPassing = false;
+                new Notice("Must set a description property for post")
             }
 
             if (validationPassing) {
@@ -121,7 +126,8 @@ export default class MyPlugin extends Plugin {
                         "blog_title": title,
                         "blog_id": id,
                         "is_public": JSON.stringify(publicPost == "true"),
-                        "api_key": this.settings.apiKey
+                        "api_key": this.settings.apiKey,
+                        "description": description
                     },
                     method: "POST",
                 }).then(r => {
