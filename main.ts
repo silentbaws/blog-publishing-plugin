@@ -106,7 +106,6 @@ export default class MyPlugin extends Plugin {
                         url: this.settings.postPath  + "attachFile",
                         body: fileBytes,
                         headers: {
-                            "blog_title": title,
                             "blog_id": id,
                             "api_key": this.settings.apiKey,
                             "image_name": file.fileName
@@ -123,11 +122,11 @@ export default class MyPlugin extends Plugin {
                     url: this.settings.postPath + "upload",
                     body: data.substring(propEndIdx + 4),
                     headers: {
-                        "blog_title": title,
+                        "blog_title": Buffer.from(title).toString('base64'),
                         "blog_id": id,
                         "is_public": JSON.stringify(publicPost == "true"),
                         "api_key": this.settings.apiKey,
-                        "description": description
+                        "description": Buffer.from(description).toString('base64')
                     },
                     method: "POST",
                 }).then(r => {
